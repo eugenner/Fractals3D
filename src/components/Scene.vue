@@ -606,12 +606,12 @@ const getTrPerp = (triangle) => {
 
 
       <a-sphere id="branch_" ind color="green" radius="0.025" data-pick-up data-magnet-range="0.2,0.1,360,180"
-        class="branch clickable left-no-magnet right-no-magnet"
+        class="branch clickable magnet-left magnet-right"
         animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
         animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;">
 
         <a-sphere id="branch_perp_" ind color="red" radius="0.0125" data-pick-up data-magnet-range="0.2,0.1,360,180"
-          class="branch_perp clickable left-no-magnet right-no-magnet" position="0.25 -0.5 0"
+          class="branch_perp clickable magnet-left magnet-right" position="0.25 -0.5 0"
           animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
           animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;"></a-sphere>
 
@@ -627,6 +627,7 @@ const getTrPerp = (triangle) => {
 
     <a-sphere color="red" radius="0.01" id="cursor" material="shader:flat"></a-sphere>
 
+    <a-box id="box1" color="gray" data-pick-up class="magnet-right" position="0 1.5 0" scale="0.1 0.1 0.1" ></a-box>
     <a-entity id="cameraRig" spawn-in-circle="radius:3" movement-controls="speed:0.15;camera:#head;" position="0 0 2"
       rotation="0 0 0">
       <!-- camera -->
@@ -652,11 +653,11 @@ const getTrPerp = (triangle) => {
         </a-entity>
 
         <!-- markers to let us know the real location of the hands, you probably want to make them visible="false" or just make them empty <a-entities> -->
-        <a-entity id="left-no-magnet" branch-no-magnet data-left="grip" radius="0.01">
+        <a-entity id="left-no-magnet" data-no-magnet data-left="grip" radius="0.01">
           <a-entity html="cursor:#cursor;html:#my-interface" position="-0.142 -0.0166 -0.02928" rotation="-80 90 0"
             scale="0.5 0.5 0.5"></a-entity>
         </a-entity>
-        <a-entity id="right-no-magnet" branch-no-magnet data-right="grip" radius="0.01"></a-entity>
+        <a-entity id="right-no-magnet" data-no-magnet data-right="grip" radius="0.01"></a-entity>
       </a-entity>
     </a-entity>
 
@@ -669,7 +670,7 @@ const getTrPerp = (triangle) => {
     </a-entity>
 
     <!-- Fractal Base 
-    <a-cylinder class="magnet" data-magnet-range="0.2,0.1,120,80" id="startStick" position="0 0.5 0" radius="0.01"
+    <a-cylinder id="startStick" position="0 0.5 0" radius="0.01"
       height="1" color="red" material="shader:phong;color:white;">
     </a-cylinder> -->
   </a-scene>
