@@ -111,6 +111,8 @@ AFRAME.registerComponent('branch-no-magnet', {
         if (distance < yourPinchThreshold) {
           // Pinch gesture detected
           console.log('pinch detected');
+          this.handEl = event.target;
+          this.startHolding();
         }
       }
 
