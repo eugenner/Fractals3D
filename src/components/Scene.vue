@@ -6,6 +6,23 @@ const fractalRootOrigin = new THREE.Vector3(0, 1, 0);
 let fractalTree = [];
 let branchTriangles = new Map(); // array of lines: [ind, [orig-forward, orig-perp, forward-perp]]
 
+AFRAME.registerComponent('pinch-listener', {
+  init: function () {
+    // Get the hand tracking controls entity
+    const handTrackingControls = this.el.components['hand-tracking-controls'];
+
+    // Listen for pinch events
+    handTrackingControls.addEventListener('pinchstart', (event) => {
+      console.log('Pinch start event:', event);
+      // Handle pinch start event
+    });
+
+    handTrackingControls.addEventListener('pinchend', (event) => {
+      console.log('Pinch end event:', event);
+      // Handle pinch end event
+    });
+  }
+});
 
 AFRAME.registerComponent('branch-no-magnet', {
   init: function () {
@@ -16,14 +33,26 @@ AFRAME.registerComponent('branch-no-magnet', {
     this.isForward = false;
     this.handEl = null;
     this.squeezedInd = null;
+
     this.selectstart = this.selectstart.bind(this);
-    this.el.addEventListener('selectstart', this.selectstart);
     this.squeeze = this.squeeze.bind(this);
-    this.el.addEventListener('squeeze', this.squeeze);
     this.squeezestart = this.squeezestart.bind(this);
-    this.el.addEventListener('squeezestart', this.squeezestart);
     this.squeezeend = this.squeezeend.bind(this);
+
+    this.el.addEventListener('selectstart', this.selectstart);
+    this.el.addEventListener('squeeze', this.squeeze);
+    this.el.addEventListener('squeezestart', this.squeezestart);
     this.el.addEventListener('squeezeend', this.squeezeend);
+
+    this.onPinchedStart = this.onPinchStarted.bind(this);
+    this.onPinchedMov = this.onPinchMoved.bind(this);
+    this.onPinchedEnd = this.onPinchEnded.bind(this);
+
+    this.el.sceneEl.addEventListener('pinchstarted', this.onPinchStarted);
+    this.el.sceneEl.addEventListener('pinchmoved', this.onPinchMoved);
+    this.el.sceneEl.addEventListener('pinchended', this.onPinchEnded);
+
+    // TODO separate this
     this.redrawTriangle = () => {
       this.squeezedInd = parseInt(this.squeezedEl.getAttribute('ind'));
       let triangle = branchTriangles.get(this.squeezedInd);
@@ -51,7 +80,41 @@ AFRAME.registerComponent('branch-no-magnet', {
     }
   },
   selectstart(event) {
+    const yourPinchThreshold = 0.1;
+    const xrHand = event.detail.inputSource.hand;
 
+    const renderer = this.el.sceneEl.renderer;
+    const referenceSpace = renderer.xr.getReferenceSpace();
+
+    if (xrHand) {
+      // Iterate through the entries of the Map
+      const thumbJoint = xrHand.get('thumb-tip'); // Replace with the correct joint name
+      const indexJoint = xrHand.get('index-finger-tip'); // Replace with the correct joint name
+
+      if (thumbJoint && indexJoint) {
+        const thumbJointPose = event.detail.frame.getJointPose(thumbJoint, referenceSpace);
+        const indexJointPose = event.detail.frame.getJointPose(indexJoint, referenceSpace);
+        // xrHand.getJointPose(indexJoint, indexJointPose);
+
+        // Access the positions from the poses
+        const thumbTipPosition = thumbJointPose.transform.position;
+        const indexTipPosition = indexJointPose.transform.position;
+
+        const tempV31 = new THREE.Vector3();
+        const tempV32 = new THREE.Vector3();
+        tempV31.set(thumbTipPosition.x,thumbTipPosition.y,thumbTipPosition.z);
+        tempV32.set(indexTipPosition.x, indexTipPosition.y, indexTipPosition.z);
+        // Calculate distance between thumb and index finger tips
+        const distance = tempV31.distanceTo(tempV32);
+
+        // Check if the distance is below a certain threshold to indicate pinch
+        if (distance < yourPinchThreshold) {
+          // Pinch gesture detected
+          console.log('pinch detected');
+        }
+      }
+
+    }
   },
   squeeze(event) {
 
@@ -61,6 +124,52 @@ AFRAME.registerComponent('branch-no-magnet', {
       return;
 
     this.handEl = event.target;
+    this.startHolding();
+    // let handPos = this.handEl.object3D.getWorldPosition(this.tempV32);
+
+    // let elList = [];
+
+    // let branches = document.getElementsByClassName('branch');
+    // for (var i = 0; i < branches.length; i++) {
+    //   elList.push(branches[i]);
+    // }
+    // for (let i = 0; i < elList.length; i++) {
+    //   if (elList[i].object3D.position.distanceTo(handPos) < this.maxDistance) {
+    //     this.squeezedEl = elList[i];
+    //     this.isForward = true;
+    //     return;
+    //   }
+    // }
+    // elList = [];
+    // let branches_perp = document.getElementsByClassName('branch_perp');
+    // for (var i = 0; i < branches_perp.length; i++) {
+    //   elList.push(branches_perp[i]);
+    // }
+    // for (let i = 0; i < elList.length; i++) {
+    //   if (elList[i].object3D.getWorldPosition(this.tempV3).distanceTo(handPos) < this.maxDistance) {
+    //     this.squeezedEl = elList[i];
+    //     this.isForward = false;
+    //     break;
+    //   }
+    // }
+  },
+  squeezeend(event) {
+    this.squeezedEl = null;
+  },
+  onPinchStarted(event) {
+    console.log('onPinchedStarted');
+    this.handEl = event.target;
+    this.startHolding();
+  },
+  onPinchMoved(event) {
+    console.log('onPinchedMoved');
+  },
+  onPinchEnded(event) {
+    console.log('onPinchedEnded');
+    this.squeezedEl = null;
+  },
+
+  startHolding() {
     let handPos = this.handEl.object3D.getWorldPosition(this.tempV32);
 
     let elList = [];
@@ -89,9 +198,8 @@ AFRAME.registerComponent('branch-no-magnet', {
       }
     }
   },
-  squeezeend(event) {
-    this.squeezedEl = null;
-  },
+
+
   tick() {
     if (this.squeezedEl) {
       if (this.isForward) {
@@ -606,12 +714,12 @@ const getTrPerp = (triangle) => {
 
 
       <a-sphere id="branch_" ind color="green" radius="0.025" data-pick-up data-magnet-range="0.2,0.1,360,180"
-        class="branch clickable magnet-left magnet-right"
+        class="branch clickable left-no-magnet right-no-magnet"
         animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
         animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;">
 
         <a-sphere id="branch_perp_" ind color="red" radius="0.0125" data-pick-up data-magnet-range="0.2,0.1,360,180"
-          class="branch_perp clickable magnet-left magnet-right" position="0.25 -0.5 0"
+          class="branch_perp clickable left-no-magnet right-no-magnet" position="0.25 -0.5 0"
           animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
           animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;"></a-sphere>
 
@@ -627,7 +735,13 @@ const getTrPerp = (triangle) => {
 
     <a-sphere color="red" radius="0.01" id="cursor" material="shader:flat"></a-sphere>
 
-    <a-box id="box1" color="gray" data-pick-up class="magnet-right" position="0 1.5 0" scale="0.1 0.1 0.1" ></a-box>
+    <a-box id="box1" class="clickable magnet-left magnet-right" color="gray" position="0.5 1.5 0"
+      scale="0.05 0.05 0.05"></a-box>
+    <a-box id="box2" class="clickable magnet-left magnet-right" color="green" position="1 1.5 0"
+      scale="0.05 0.05 0.05"></a-box>
+
+    <!-- <a-box id="box3" hand-tracking-controls></a-box> -->
+
     <a-entity id="cameraRig" spawn-in-circle="radius:3" movement-controls="speed:0.15;camera:#head;" position="0 0 2"
       rotation="0 0 0">
       <!-- camera -->
@@ -653,11 +767,11 @@ const getTrPerp = (triangle) => {
         </a-entity>
 
         <!-- markers to let us know the real location of the hands, you probably want to make them visible="false" or just make them empty <a-entities> -->
-        <a-entity id="left-no-magnet" data-no-magnet data-left="grip" radius="0.01">
+        <a-entity id="left-no-magnet" branch-no-magnet data-left="grip" radius="0.01">
           <a-entity html="cursor:#cursor;html:#my-interface" position="-0.142 -0.0166 -0.02928" rotation="-80 90 0"
             scale="0.5 0.5 0.5"></a-entity>
         </a-entity>
-        <a-entity id="right-no-magnet" data-no-magnet data-right="grip" radius="0.01"></a-entity>
+        <a-entity id="right-no-magnet" branch-no-magnet data-right="grip" radius="0.01"></a-entity>
       </a-entity>
     </a-entity>
 
