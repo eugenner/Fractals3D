@@ -6,51 +6,42 @@ const fractalRootOrigin = new THREE.Vector3(0, 1, 0);
 let fractalTree = [];
 let branchTriangles = new Map(); // array of lines: [ind, [orig-forward, orig-perp, forward-perp]]
 
-AFRAME.registerComponent('pinch-listener', {
-  init: function () {
-    // Get the hand tracking controls entity
-    const handTrackingControls = this.el.components['hand-tracking-controls'];
 
-    // Listen for pinch events
-    handTrackingControls.addEventListener('pinchstart', (event) => {
-      console.log('Pinch start event:', event);
-      // Handle pinch start event
-    });
-
-    handTrackingControls.addEventListener('pinchend', (event) => {
-      console.log('Pinch end event:', event);
-      // Handle pinch end event
-    });
-  }
-});
-
+/* 
+  This Component is tuned to work with a Branch type elements only.
+  This component should be attached to the non magnet controllers/hands of the handy-works Component.
+  Elements should have a class="left-no-magnet right-no-magnet"
+*/
 AFRAME.registerComponent('branch-no-magnet', {
   init: function () {
     this.tempV3 = new THREE.Vector3();
     this.tempV32 = new THREE.Vector3();
+    this.tempV33 = new THREE.Vector3();
     this.maxDistance = 0.05;
     this.squeezedEl = null;
     this.isForward = false;
     this.handEl = null;
     this.squeezedInd = null;
+    this.isPinched = false;
+    this.xrHand = null;
+    this.renderer = this.el.sceneEl.renderer;
 
     this.selectstart = this.selectstart.bind(this);
+    this.select = this.select.bind(this);
+    this.selectend = this.selectend.bind(this);
+
     this.squeeze = this.squeeze.bind(this);
     this.squeezestart = this.squeezestart.bind(this);
     this.squeezeend = this.squeezeend.bind(this);
 
     this.el.addEventListener('selectstart', this.selectstart);
+    this.el.addEventListener('select', this.select);
+    this.el.addEventListener('selectend', this.selectend);
+
     this.el.addEventListener('squeeze', this.squeeze);
     this.el.addEventListener('squeezestart', this.squeezestart);
     this.el.addEventListener('squeezeend', this.squeezeend);
 
-    this.onPinchedStart = this.onPinchStarted.bind(this);
-    this.onPinchedMov = this.onPinchMoved.bind(this);
-    this.onPinchedEnd = this.onPinchEnded.bind(this);
-
-    this.el.sceneEl.addEventListener('pinchstarted', this.onPinchStarted);
-    this.el.sceneEl.addEventListener('pinchmoved', this.onPinchMoved);
-    this.el.sceneEl.addEventListener('pinchended', this.onPinchEnded);
 
     // TODO separate this
     this.redrawTriangle = () => {
@@ -79,104 +70,92 @@ AFRAME.registerComponent('branch-no-magnet', {
       hipoLine.geometry.attributes.position.needsUpdate = true;
     }
   },
+  select(event) {
+    console.log('select');
+  },
+  selectend(event) {
+    console.log('selectend');
+    this.isPinched = false;
+    this.squeezedEl = null;
+  },
+
+  // for hands events
   selectstart(event) {
-    const yourPinchThreshold = 0.1;
-    const xrHand = event.detail.inputSource.hand;
+    if (!event.detail.inputSource.hand)
+      return;
 
-    const renderer = this.el.sceneEl.renderer;
-    const referenceSpace = renderer.xr.getReferenceSpace();
+    this.xrHand = event.detail.inputSource.hand;
+    const pinchTreshHold = 0.05; // Distance between tips of fingers
 
-    if (xrHand) {
-      // Iterate through the entries of the Map
-      const thumbJoint = xrHand.get('thumb-tip'); // Replace with the correct joint name
-      const indexJoint = xrHand.get('index-finger-tip'); // Replace with the correct joint name
+    // Iterate through the entries of the Map
+    const thumbJoint = this.xrHand.get('thumb-tip'); // Replace with the correct joint name
+    const indexJoint = this.xrHand.get('index-finger-tip'); // Replace with the correct joint name
 
-      if (thumbJoint && indexJoint) {
-        const thumbJointPose = event.detail.frame.getJointPose(thumbJoint, referenceSpace);
-        const indexJointPose = event.detail.frame.getJointPose(indexJoint, referenceSpace);
-        // xrHand.getJointPose(indexJoint, indexJointPose);
+    if (thumbJoint && indexJoint) {
+      const thumbJointPose = event.detail.frame.getJointPose(thumbJoint, this.renderer.xr.getReferenceSpace());
+      const indexJointPose = event.detail.frame.getJointPose(indexJoint, this.renderer.xr.getReferenceSpace());
 
-        // Access the positions from the poses
-        const thumbTipPosition = thumbJointPose.transform.position;
-        const indexTipPosition = indexJointPose.transform.position;
+      // Access the positions from the poses
+      const thumbTipPosition = thumbJointPose.transform.position;
+      const indexTipPosition = indexJointPose.transform.position;
 
-        const tempV31 = new THREE.Vector3();
-        const tempV32 = new THREE.Vector3();
-        tempV31.set(thumbTipPosition.x,thumbTipPosition.y,thumbTipPosition.z);
-        tempV32.set(indexTipPosition.x, indexTipPosition.y, indexTipPosition.z);
-        // Calculate distance between thumb and index finger tips
-        const distance = tempV31.distanceTo(tempV32);
+      const tempV31 = new THREE.Vector3();
+      const tempV32 = new THREE.Vector3();
+      tempV31.set(thumbTipPosition.x, thumbTipPosition.y, thumbTipPosition.z);
+      tempV32.set(indexTipPosition.x, indexTipPosition.y, indexTipPosition.z);
+      // Calculate distance between thumb and index finger tips
+      const distance = tempV31.distanceTo(tempV32);
 
-        // Check if the distance is below a certain threshold to indicate pinch
-        if (distance < yourPinchThreshold) {
-          // Pinch gesture detected
-          console.log('pinch detected');
-          this.handEl = event.target;
-          this.startHolding();
+      // Check if the distance is below a certain threshold to indicate pinch
+      if (distance < pinchTreshHold) {
+        // Pinch gesture detected
+        console.log('pinch detected');
+        this.isPinched = true;
+        this.handEl = event.target;
+        // Get the frame in callback
+        this.renderer.xr.getSession().requestAnimationFrame((timestamp, xrFrame) => {
+          this.tryHolding(event, xrFrame);
         }
-      }
+        );
 
+      }
     }
   },
   squeeze(event) {
 
   },
   squeezestart(event) {
-    if (document.getElementsByClassName('branch').length < 2)
-      return;
-
     this.handEl = event.target;
-    this.startHolding();
-    // let handPos = this.handEl.object3D.getWorldPosition(this.tempV32);
-
-    // let elList = [];
-
-    // let branches = document.getElementsByClassName('branch');
-    // for (var i = 0; i < branches.length; i++) {
-    //   elList.push(branches[i]);
-    // }
-    // for (let i = 0; i < elList.length; i++) {
-    //   if (elList[i].object3D.position.distanceTo(handPos) < this.maxDistance) {
-    //     this.squeezedEl = elList[i];
-    //     this.isForward = true;
-    //     return;
-    //   }
-    // }
-    // elList = [];
-    // let branches_perp = document.getElementsByClassName('branch_perp');
-    // for (var i = 0; i < branches_perp.length; i++) {
-    //   elList.push(branches_perp[i]);
-    // }
-    // for (let i = 0; i < elList.length; i++) {
-    //   if (elList[i].object3D.getWorldPosition(this.tempV3).distanceTo(handPos) < this.maxDistance) {
-    //     this.squeezedEl = elList[i];
-    //     this.isForward = false;
-    //     break;
-    //   }
-    // }
+    this.isPinched = false;
+    this.tryHolding(event);
   },
   squeezeend(event) {
     this.squeezedEl = null;
   },
-  onPinchStarted(event) {
-    console.log('onPinchedStarted');
-    this.handEl = event.target;
-    this.startHolding();
-  },
-  onPinchMoved(event) {
-    console.log('onPinchedMoved');
-  },
-  onPinchEnded(event) {
-    console.log('onPinchedEnded');
-    this.squeezedEl = null;
-  },
 
-  startHolding() {
+  // check if there is an object near to controller or hand position (fingers)
+  // if exists set this.squeezedEl with it
+  tryHolding(event, frame) {
     let handPos = this.handEl.object3D.getWorldPosition(this.tempV32);
+
+    // for hand use a finger's tip
+    if (this.isPinched && this.xrHand && frame) {
+      const indexJoint = this.xrHand.get('index-finger-tip');
+      const handSpace = this.renderer.xr.getReferenceSpace();
+      const indexJointPose = frame.getJointPose(indexJoint, handSpace);
+      const indexTipPosition = indexJointPose.transform.position;
+      this.tempV33.set(indexTipPosition.x, indexTipPosition.y, indexTipPosition.z);
+      this.tempV33.add(this.handEl.parentEl.parentEl.object3D.position);
+      handPos.copy(this.tempV33);
+    }
 
     let elList = [];
 
     let branches = document.getElementsByClassName('branch');
+    if (!branches)
+      return;
+
+    // check if forward branch point
     for (var i = 0; i < branches.length; i++) {
       elList.push(branches[i]);
     }
@@ -187,6 +166,8 @@ AFRAME.registerComponent('branch-no-magnet', {
         return;
       }
     }
+
+    // check if perp branch point
     elList = [];
     let branches_perp = document.getElementsByClassName('branch_perp');
     for (var i = 0; i < branches_perp.length; i++) {
@@ -201,13 +182,30 @@ AFRAME.registerComponent('branch-no-magnet', {
     }
   },
 
-
   tick() {
+
     if (this.squeezedEl) {
+      let handElWorldPos = this.handEl.object3D.getWorldPosition(this.tempV32);
+
+      // If the handEl is a hand and not a controller
+      // the position of the grabbed object should be taken from some pinched finger
+      if (this.isPinched && this.xrHand) {
+        const indexJoint = this.xrHand.get('index-finger-tip');
+        const frame = this.renderer.xr.getFrame();
+        if(!frame)
+          return;
+        const handSpace = this.renderer.xr.getReferenceSpace();
+        const indexJointPose = frame.getJointPose(indexJoint, handSpace);
+        const indexTipPosition = indexJointPose.transform.position;
+        this.tempV33.set(indexTipPosition.x, indexTipPosition.y, indexTipPosition.z);
+        this.tempV33.add(this.handEl.parentEl.parentEl.object3D.position);
+        handElWorldPos.copy(this.tempV33);
+      }
+
       if (this.isForward) {
-        this.squeezedEl.object3D.position.copy(this.handEl.object3D.getWorldPosition(this.tempV32));
+        this.squeezedEl.object3D.position.copy(handElWorldPos);
       } else {
-        this.squeezedEl.object3D.position.copy(this.handEl.object3D.getWorldPosition(this.tempV32))
+        this.squeezedEl.object3D.position.copy(handElWorldPos)
           .sub(this.squeezedEl.object3D.parent.position);
       }
       // redrawTriangle // TODO
@@ -744,7 +742,7 @@ const getTrPerp = (triangle) => {
 
     <!-- <a-box id="box3" hand-tracking-controls></a-box> -->
 
-    <a-entity id="cameraRig" spawn-in-circle="radius:3" movement-controls="speed:0.15;camera:#head;" position="0 0 2"
+    <a-entity id="cameraRig" spawn-in-circle="radius:3" movement-controls="speed:0.15;camera:#head;" position="0 0 1"
       rotation="0 0 0">
       <!-- camera -->
       <a-entity class="head" camera="near:0.01;" look-controls="pointerLockEnabled: false" position="0 1.65 0"></a-entity>
