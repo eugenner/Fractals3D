@@ -1,6 +1,6 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
-
+import { onMounted, onUnmounted } from 'vue';
+import presets from './PresetTreeData.vue';
 const THREE = window.THREE;
 const fractalRootOrigin = new THREE.Vector3(0, 1, 0);
 let fractalTree = [];
@@ -8,6 +8,7 @@ let branchTriangles = new Map(); // array of lines: [ind, [orig-forward, orig-pe
 let fractalTreePairsPoints = [];
 let fractalTreePairsPointsColor = [];
 let segments = [];
+let baseTriangleSegment;
 /* 
   This Component is tuned to work with a Branch type elements only.
   This component should be attached to the non magnet controllers/hands of the handy-works Component.
@@ -15,10 +16,11 @@ let segments = [];
 */
 AFRAME.registerComponent('branch-no-magnet', {
   init: function () {
+    console.log('registering bnm');
     this.tempV3 = new THREE.Vector3();
     this.tempV32 = new THREE.Vector3();
     this.tempV33 = new THREE.Vector3();
-    this.maxDistance = 0.05;
+    this.maxDistance = 0.05; // to choose the closest branch vertex
     this.squeezedEl = null;
     this.isForward = false;
     this.handEl = null;
@@ -250,7 +252,6 @@ AFRAME.registerComponent('branch-no-magnet', {
         this.squeezedEl.object3D.position.copy(handElWorldPos)
           .sub(this.squeezedEl.object3D.parent.position);
       }
-      // redrawTriangle // TODO
       this.redrawTriangle();
     }
   }
@@ -275,7 +276,6 @@ const addBranch = (event, branchPos = new THREE.Vector3(0, 1.5, 0),
   perp.setAttribute('position',
     '' + branchPerpPos.x + ' ' + branchPerpPos.y + ' ' + branchPerpPos.z);
   clonedEntity.setAttribute('id', originalEntity.id + (fractalTree.length + 1));
-  // clonedEntity.setAttribute('position', '0 1.5 0');
 
   fractalTree.push(clonedEntity);
   scene.appendChild(clonedEntity);
@@ -368,10 +368,11 @@ const switchLight = (mode) => {
 }
 
 const exitXR = () => {
-  document.getElementById('myEnterVRButton').disabled = false;
-  document.getElementById('myEnterARButton').disabled = false;
-  document.getElementById('exit_vr').disabled = true;
-  AFRAME.scenes[0].exitVRBound();
+  var aframeScene = document.querySelector("a-scene");
+  // document.getElementById('myEnterVRButton').disabled = false;
+  // document.getElementById('myEnterARButton').disabled = false;
+
+  aframeScene.exitVR();
 }
 
 const drawLine = (points, color) => {
@@ -387,15 +388,44 @@ const drawLine = (points, color) => {
   return line;
 }
 
-onMounted(() => {
-  drawLine([new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0)], 'blue');
-  drawLine([new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.5, 0, 0)], 'yellow');
-  drawLine([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.5, 0, 0)], 'green');
+const drawBaseTriangle = () => {
+  const points = [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.5, 0, 0),
+  new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.5, 0, 0)];
+  const pointColor = [new THREE.Color('blue'), new THREE.Color('blue'),
+  new THREE.Color('yellow'), new THREE.Color('yellow'),
+  new THREE.Color('green'), new THREE.Color('green')];
+  var aframeScene = document.querySelector("a-scene");
+  var threeScene = aframeScene.object3D;
 
+  var lg = new THREE.BufferGeometry().setFromPoints(points);
+  const lm = new THREE.LineBasicMaterial({ vertexColors: true });
+
+  const colors = new Float32Array(pointColor.flatMap(c => c.toArray()));
+  lg.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  baseTriangleSegment = new THREE.LineSegments(lg, lm);
+  baseTriangleSegment.material.depthTest = false;
+  threeScene.add(baseTriangleSegment);
+}
+
+onMounted(() => {
+  drawBaseTriangle();
   // Attach the keyboard event listener
   window.addEventListener('keydown', handleKeyDown);
-
-
+  if ('xr' in navigator) {
+    console.log('WebXR is supported');
+    navigator.xr.requestSession('immersive-vr').then((xrSession) => {
+      // XR session is successfully obtained
+      // xrSession object provides access to XR features
+      console.log('XR session abtained');
+    }).catch((error) => {
+      // Handle errors
+      console.error('Failed to obtain XR session:', error);
+    });
+  } else {
+    console.log('WebXR is not supported');
+  }
 });
 
 onUnmounted(() => {
@@ -423,9 +453,11 @@ const clearTree = () => {
   });
   fractalTreePairsPoints = [];
   fractalTreePairsPointsColor = [];
+  baseTriangleSegment.visible = true;
 }
 
 const generateTree = () => {
+  baseTriangleSegment.visible = false;
   var aframeScene = document.querySelector("a-scene");
   var threeScene = aframeScene.object3D;
   lines.forEach((l) => {
@@ -468,132 +500,13 @@ const drawTree = () => {
 }
 
 const addRandomTree = () => {
-  const presets = [
-    // 0
-    [[
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.3, 0.8, 0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0.5), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.3, 0.8, -0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0.5), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.3, 0.8, 0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0.5), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.3, 0.8, -0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0.5), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ]],
-    // 1
-    [[
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.3, -0.3, 0), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0.6, 0), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.3, -0.3, 0), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, -0.2, 0.2), // Y - forward vector 
-      new THREE.Vector3(0, -0.5, 0.2), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, -0.2, -0.2), // Y - forward vector 
-      new THREE.Vector3(0, -0.5, -0.2), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ]
-    ],
-    // 2
-    [[
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0.5, 0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0.5, -0.2), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.4, 0.9, 0.3), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.4, 0.5, 0), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ]],
-    // 3
-    [[
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0.9, 0), // Y - forward vector 
-      new THREE.Vector3(0.5, 0, 0), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.4, 0.4, 0.4), // Y - forward vector 
-      new THREE.Vector3(0.4, 0, 0.4), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.4, 0.4, -0.4), // Y - forward vector 
-      new THREE.Vector3(0.4, 0, -0.4), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.4, 0.4, 0.4), // Y - forward vector 
-      new THREE.Vector3(-0.4, 0, 0.4), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ],
-    [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-0.4, 0.4, -0.4), // Y - forward vector 
-      new THREE.Vector3(-0.4, 0, 0.4), // X - right vector
-      new THREE.Vector3(0, 0, 0)
-    ]]
-  ];
-
   presets[Math.floor(Math.random() * presets.length)].forEach((triangle) => {
-    triangle.forEach((p) => {
-      p.add(fractalRootOrigin);
-    })
-    addBranch(null, triangle[1], triangle[2], true);
+    addBranch(null, triangle[1].clone().add(fractalRootOrigin),
+      triangle[2].clone().add(fractalRootOrigin), true);
   });
-
 }
 
-let maxLevel = 7;
+let maxLevel = 7; // TODO setup this from UI
 let levelColors = [];
 for (let l = 0; l <= maxLevel; l++) {
   levelColors.push(new THREE.Color(0x0000FF));
@@ -609,7 +522,7 @@ const drawFractal = (base, branches, level) => {
   // // const lineColor = new THREE.Color().lerpColors(startColor, endColor, 0.3 + level * 0.1);
   // let lineColor = levelColors[level];
 
-  if (level > 1) {
+  if (level >= 1) {
     // lines.push(drawLine(base, 'blue'));
     fractalTreePairsPoints.push(base[0], base[1]);
     fractalTreePairsPointsColor.push(levelColors[level], levelColors[level]); // todo 6 value RGB, RGB
@@ -645,18 +558,15 @@ const drawFractal = (base, branches, level) => {
 }
 
 const enterXR = (mode) => {
-  
-  document.getElementById('myEnterVRButton').disabled = true;
-  document.getElementById('myEnterARButton').disabled = true;
-  document.getElementById('exit_vr').disabled = false;
-
   var aframeScene = document.querySelector("a-scene");
-
-  if (mode == 'vr')
+  if (mode == 'vr') {
     aframeScene.enterVR();
-  if (mode == 'ar')
+  } else {
     aframeScene.enterAR();
-
+  }
+  // document.getElementById('myEnterVRButton').disabled = true;
+  // document.getElementById('myEnterARButton').disabled = true;
+  // document.getElementById('exit_vr').disabled = false;
 }
 
 const moveInPosition = (data) => {
@@ -808,16 +718,12 @@ const getTrPerp = (triangle) => {
 </script>
 
 <template>
-
   <a-scene webxr="overlayElement:#dom-overlay;"
-  inspector="url: https://cdn.jsdelivr.net/gh/aframevr/aframe-inspector@master/dist/aframe-inspector.min.js"
     gltf-model="dracoDecoderPath: https://cdn.jsdelivr.net/npm/three@0.129.0/examples/js/libs/draco/gltf/;"
-    cursor="rayOrigin: mouse" raycaster="objects: [html],.clickable; interval:100;" vr-mode-ui="enabled: false"
+    cursor="rayOrigin: mouse" raycaster="objects: [html],.clickable; interval:100;" vr-mode-ui="enabled: true"
     render-order="background, menu, menubutton, menutext, foreground, hud">
 
     <a-assets>
-
-
       <a-sphere id="branch_" ind color="green" radius="0.025" data-pick-up data-magnet-range="0.2,0.1,360,180"
         class="branch clickable left-no-magnet right-no-magnet"
         animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
@@ -826,7 +732,8 @@ const getTrPerp = (triangle) => {
         <a-sphere id="branch_perp_" ind color="red" radius="0.0125" data-pick-up data-magnet-range="0.2,0.1,360,180"
           class="branch_perp clickable left-no-magnet right-no-magnet" position="0.25 -0.5 0"
           animation__press="startEvents:press;property:components.material.material.color;type:color;to:green;dur:100;"
-          animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;"></a-sphere>
+          animation__release="startEvents:release;property:components.material.material.color;type:color;to:grey;dur:100;">
+        </a-sphere>
 
       </a-sphere>
 
@@ -835,10 +742,7 @@ const getTrPerp = (triangle) => {
       <a-asset-item id="left-gltf"
         src="https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/skeleton-left-hand-webxr/model.gltf"></a-asset-item>
 
-
     </a-assets>
-
-    <a-sphere color="red" radius="0.01" id="cursor" material="shader:flat"></a-sphere>
 
     <a-entity id="cameraRig" spawn-in-circle="radius:3" movement-controls="speed:0.15;camera:#head;" position="0 0 1"
       rotation="0 0 0">
@@ -866,7 +770,7 @@ const getTrPerp = (triangle) => {
 
         <!-- markers to let us know the real location of the hands, you probably want to make them visible="false" or just make them empty <a-entities> -->
         <a-entity id="left-no-magnet" branch-no-magnet data-left="grip" radius="0.01">
-          <a-entity id="wrist_html" html="cursor:#cursor; html:#my-interface" position="-0.142 -0.0166 -0.02928" rotation="-80 90 0"
+          <a-entity id="wrist_html" html="html:#my-interface" position="-0.142 -0.0166 -0.02928" rotation="-80 90 0"
             scale="0.5 0.5 0.5"></a-entity>
         </a-entity>
         <a-entity id="right-no-magnet" branch-no-magnet data-right="grip" radius="0.01"></a-entity>
@@ -912,7 +816,8 @@ const getTrPerp = (triangle) => {
         <button @click="clearTree" style="margin-bottom: 5px;  width: 100%">Clear</button>
       </fieldset>
       <label style="padding-left: 0.5em;">Light</label>
-      <fieldset style="display: flex; justify-content: center; border-radius: 1em; padding-bottom: 5px; margin-bottom: 10px;">
+      <fieldset
+        style="display: flex; justify-content: center; border-radius: 1em; padding-bottom: 5px; margin-bottom: 10px;">
         <input @click="switchLight('day')" type="radio" id="light-day" name="light" value="day" checked="">
         <label>Day</label>
         <input @click="switchLight('night')" type="radio" id="light-night" name="light" value="night">
@@ -920,13 +825,14 @@ const getTrPerp = (triangle) => {
       </fieldset>
       <div id="mode">
         <label style="padding-left: 0.5em;">Mode</label>
-        <fieldset style=" display: flex; justify-content: center; border-radius: 1em; padding-bottom: 5px; margin-bottom: 10px; width: 100%">
+        <fieldset
+          style=" display: flex; justify-content: center; border-radius: 1em; padding-bottom: 5px; margin-bottom: 10px; width: 100%">
           <button id="myEnterVRButton" @click="enterXR('vr')" style="margin-right: 5px;">VR</button>
           <button id="myEnterARButton" @click="enterXR('ar')">AR</button>
         </fieldset>
         <div style="display: flex; justify-content: center; margin-top: 1em;">
-            <button id="exit_vr" @click="exitXR" style="border-radius: 1em;" disabled="true">Exit Immersive</button>
-          </div>
+          <button id="exit_vr" @click="exitXR" style="border-radius: 1em;">Exit Immersive</button>
+        </div>
       </div>
 
     </div>
